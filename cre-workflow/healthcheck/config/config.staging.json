@@ -1,0 +1,44 @@
+{
+    "chains": [
+        {
+            "name": "ethereum",
+            "rpcUrl": "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY",
+            "chainId": 1,
+            "multicallAddress": "0xcA11bde05977b3631167028862bE2a173976CA11"
+        },
+        {
+            "name": "arbitrum",
+            "rpcUrl": "https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY",
+            "chainId": 42161,
+            "multicallAddress": "0xcA11bde05977b3631167028862bE2a173976CA11"
+        },
+        {
+            "name": "base",
+            "rpcUrl": "https://base-mainnet.g.alchemy.com/v2/YOUR_KEY",
+            "chainId": 8453,
+            "multicallAddress": "0xcA11bde05977b3631167028862bE2a173976CA11"
+        }
+    ],
+    "protocols": [
+        "aave",
+        "compound",
+        "uniswap",
+        "maker"
+    ],
+    "riskOracleAddress": "0x0000000000000000000000000000000000000001",
+    "aegisGuardAddress": "0x0000000000000000000000000000000000000002",
+    "attestationRegistryAddress": "0x0000000000000000000000000000000000000003",
+    "policyEngineAddress": "0x0000000000000000000000000000000000000004",
+    "aiServiceUrl": "http://localhost:3001",
+    "discordWebhookUrl": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+    "intervalSeconds": 60,
+    "policy": {
+        "version": "1.0.0",
+        "velocityThreshold": 0.10,
+        "solvencyWarning": 0.95,
+        "solvencyPause": 0.90,
+        "maxBorrowCap": 1000000,
+        "collateralFloor": 1.5,
+        "interestCeiling": 0.25
+    }
+}

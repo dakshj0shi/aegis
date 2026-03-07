@@ -1,0 +1,14 @@
+{
+    "name": "aegis-ai-risk-engine",
+    "version": "1.0.0",
+    "description": "AEGIS AI Risk Scoring Service",
+    "main": "risk-engine.js",
+    "scripts": {
+        "start": "node risk-engine.js",
+        "dev": "node --watch risk-engine.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.21.0"
+    }
+}

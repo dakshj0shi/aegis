@@ -1,0 +1,66 @@
+# AEGIS PROJECT RECORD — Institutional Build v1.3.1
+Creation Date: 2026-03-08
+Status: Institutional Terminal Ready
+
+## 1. PROJECT OBJECTIVE
+AEGIS (Autonomous Economic Guardrail & Intelligence System) is a multi-chain DeFi risk monitoring and autonomous protection system. It identifies systemic threats across Ethereum, Arbitrum, and Base in real-time and triggers on-chain circuit breakers to protect protocol solvency.
+
+## 2. SYSTEM ARCHITECTURE (DEEP DIVE)
+
+### A. Intelligence Tier: AI Risk Engine
+*   **Implementation**: Node.js/Express service running in a isolated Docker container.
+*   **Algorithm**: Non-linear systemic aggregation. It processes metrics from the CRE Tier and applies weighted vectors.
+*   **Weights**: Solvency (35%), Velocity (25%), Contagion (20%), Cascade (20%).
+
+### B. Logic Tier: Chainlink CRE Workflow
+*   **Workflow Definition**: `cre-workflow/healthcheck/workflow.def.ts` orchestrates a 14-step loop.
+*   **Data Source Manager**: `dataSource.ts` handles the branching logic for **Simulation vs. Live**.
+
+### C. Enforcement Tier: Smart Contracts (Solidity)
+*   **Enforcement Contracts**: `AegisGuard.sol`, `RiskOracle.sol`, `AttestationRegistry.sol`.
+*   **RBAC**: Uses OpenZeppelin `AccessControl`.
+
+### D. Visualization Tier: Institutional Dashboard
+*   **Framework**: Next.js 14 + Tailwind CSS + Framer Motion.
+*   **Institutional Wallet Interface**: Added `WalletConnect.tsx` for secure MetaMask/Web3 handshake.
+*   **Robust Provider Logic**: Implemented `ethers.BrowserProvider` guards to prevent extension-level connection errors when a wallet is not present or authorized.
+
+## 3. CORE TECHNICAL MODULES (HOW IT WORKS)
+
+### Cascade Propagation Engine (`cascade.ts`)
+*   **Recursive Flow**: Calculates stress transfer through protocol dependency graphs.
+*   **Institutional Check**: Cross-lending saturation (Aave/Compound) triggers systemic multipliers.
+
+### On-Chain Attestation Feed (`AttestationFeed.tsx`)
+*   **Provider Handshake**: Uses async `ethers.BrowserProvider` checks.
+*   **Safe Polling**: Implemented try/catch wrappers around contract calls to suppress MetaMask "Object.connect" errors in unstable browser environments.
+
+### Component Suite
+*   **SystemMetrics.tsx**: Real-time CRE latency tracking.
+*   **CascadeGraph.tsx**: SVG-based dependency mapping.
+*   **WalletConnect.tsx**: State-managed institutional auth panel.
+
+## 4. TOOLING & DEVELOPMENT STACK
+*   **Interactions**: Ethers.js v6.
+*   **State**: React Hooks (Strict Mode).
+*   **Animation**: Framer-Motion 12+.
+
+## 5. SYSTEM STATUS & REMAINING FRICTION
+
+### Resolved: 
+- Fixed MetaMask "Failed to connect" console spam by adding `window.ethereum` presence validation and graceful provider initialization.
+
+### Pending / Technical Debt:
+- **Gas Strategy**: `enforceRiskPolicy` on-chain gas estimation.
+- **Node Expansion**: Support for additional institutional protocols (Spark, GMX).
+
+## 6. REPOSITORY DIRECTORY MAP
+- `/ai`: Institutional Risk scoring (Internal Engine).
+- `/contracts`: Enforcement and Oracle contracts (Solidity).
+- `/cre-workflow`: The autonomous Chainlink-style loop.
+- `/dashboard`: The Institutional UI (Terminal).
+
+---
+RECORD END — Property of AEGIS Advanced Institutional Risk Lab.
+v1.3.0 Optimized for Multi-Chain EVM Monitoring.
+
