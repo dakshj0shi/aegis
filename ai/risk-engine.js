@@ -116,6 +116,67 @@ app.post("/risk-analysis", (req, res) => {
     }
 });
 
+function toExposure(riskScore) {
+    if (riskScore >= 75) return "high";
+    if (riskScore >= 45) return "medium";
+    return "low";
+}
+
+function toTrend(riskScore) {
+    if (riskScore >= 75) return "deteriorating";
+    if (riskScore >= 45) return "elevated";
+    return "stable";
+}
+
+function buildRiskResponse(analysis) {
+    const volatility = Number((analysis.vectorScores.volatility / 100).toFixed(2));
+    const cascadeProbability = Math.min(95, Math.round(analysis.vectorScores.cascade * 0.85));
+    const nextRiskWindow =
+        analysis.riskScore >= 75 ? "HIGH" :
+            analysis.riskScore >= 45 ? "MEDIUM" :
+                "LOW";
+
+    return {
+        riskScore: analysis.riskScore,
+        confidence: analysis.confidenceScore,
+        exposure: toExposure(analysis.riskScore),
+        volatility,
+        trend: toTrend(analysis.riskScore),
+        forecast:
+            analysis.riskScore >= 75 ? "Elevated" :
+                analysis.riskScore >= 45 ? "Watchlist" :
+                    "Stable",
+        nextRiskWindow,
+        cascadeProbability,
+    };
+}
+
+/**
+ * Standardized API for dashboard polling.
+ */
+app.get("/api/risk", (_req, res) => {
+    const analysis = processRiskAnalysis({
+        velocity: 0.18,
+        solvency: 0.91,
+        contagion: 0.21,
+        cascadeRisk: 0.19,
+        tvlVolatility: 0.12,
+    });
+    res.json(buildRiskResponse(analysis));
+});
+
+app.post("/api/risk", (req, res) => {
+    try {
+        const mapped = req.body?.velocity !== undefined
+            ? req.body
+            : mapScorePayload(req.body ?? {});
+        const analysis = processRiskAnalysis(mapped);
+        res.json(buildRiskResponse(analysis));
+    } catch (error) {
+        res.status(400).json({ error: "Invalid risk payload" });
+    }
+});
+
 app.get("/health", (req, res) => {
     res.json({
         status: "healthy",
