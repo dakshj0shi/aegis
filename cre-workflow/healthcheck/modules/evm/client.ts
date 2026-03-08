@@ -7,23 +7,47 @@ import { ChainConfig, Chain } from "../../types"
 
 dotenv.config()
 
-if (!process.env.SEPOLIA_RPC) {
-    throw new Error("SEPOLIA_RPC is required")
-}
 if (!process.env.PRIVATE_KEY) {
     throw new Error("PRIVATE_KEY is required")
 }
 
-const writeProvider = new ethers.JsonRpcProvider(
-    process.env.SEPOLIA_RPC,
-    undefined,
-    { staticNetwork: true }
+const WRITE_RPC_CANDIDATES = Array.from(
+    new Set(
+        [
+            process.env.SEPOLIA_RPC,
+            process.env.RPC_SEPOLIA,
+            process.env.NEXT_PUBLIC_RPC_URL,
+            process.env.NEXT_PUBLIC_RPC_ETHEREUM,
+            "https://ethereum-sepolia-rpc.publicnode.com",
+            "https://rpc.sepolia.org",
+        ].filter((v): v is string => Boolean(v && v.trim().length > 0))
+    )
 )
 
-const wallet = new ethers.Wallet(
-    process.env.PRIVATE_KEY!,
-    writeProvider
-)
+if (WRITE_RPC_CANDIDATES.length === 0) {
+    throw new Error("At least one Sepolia RPC URL is required")
+}
+
+let preferredWriteRpcIndex = 0
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+            }),
+        ])
+    } finally {
+        if (timer) clearTimeout(timer)
+    }
+}
+
+function toErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message
+    return String(error)
+}
 
 export class EVMClient {
     private config: ChainConfig
@@ -32,11 +56,7 @@ export class EVMClient {
 
     constructor(config: ChainConfig) {
         this.config = config
-        this.readProvider = new ethers.JsonRpcProvider(
-            this.config.rpcUrl,
-            undefined,
-            { staticNetwork: true }
-        )
+        this.readProvider = new ethers.JsonRpcProvider(this.config.rpcUrl)
     }
 
     get chainName(): Chain {
@@ -102,33 +122,63 @@ export class EVMClient {
 
         if (!this.connected) await this.connect()
 
-        const contract = new ethers.Contract(
-            params.contractAddress,
-            params.abi,
-            wallet
-        )
-
         const functionName = params.functionSignature.split("(")[0]
 
-        console.log(
-            `[EVMClient:${this.config.name}] Sending TX ${functionName}`
+        let lastError: unknown
+        for (let i = 0; i < WRITE_RPC_CANDIDATES.length; i++) {
+            const index = (preferredWriteRpcIndex + i) % WRITE_RPC_CANDIDATES.length
+            const rpcUrl = WRITE_RPC_CANDIDATES[index]
+
+            try {
+                const provider = new ethers.JsonRpcProvider(rpcUrl)
+                await withTimeout(provider.getBlockNumber(), 5_000, `RPC health check (${rpcUrl})`)
+                const signer = new ethers.Wallet(process.env.PRIVATE_KEY!, provider)
+                const contract = new ethers.Contract(
+                    params.contractAddress,
+                    params.abi,
+                    signer
+                )
+
+                console.log(
+                    `[EVMClient:${this.config.name}] Sending TX ${functionName} via ${rpcUrl}`
+                )
+
+                const overrides: { value: bigint; gasLimit?: bigint } = {
+                    value: params.value ?? 0n,
+                }
+
+                try {
+                    const estimatedGas = await contract[functionName].estimateGas(...params.args, overrides)
+                    overrides.gasLimit = (estimatedGas * 12n) / 10n
+                } catch {
+                    // Fallback to provider-estimated gas at send time.
+                }
+
+                const tx = await contract[functionName](...params.args, overrides)
+
+                console.log(
+                    `[EVMClient:${this.config.name}] TX SENT → ${tx.hash}`
+                )
+
+                await withTimeout(tx.wait(1), 120_000, "Transaction confirmation")
+
+                console.log(
+                    `[EVMClient:${this.config.name}] TX CONFIRMED`
+                )
+
+                preferredWriteRpcIndex = index
+                return tx.hash
+            } catch (error) {
+                lastError = error
+                console.error(
+                    `[EVMClient:${this.config.name}] Write attempt failed via ${rpcUrl}: ${toErrorMessage(error)}`
+                )
+            }
+        }
+
+        throw new Error(
+            `All write RPCs failed for ${functionName}: ${toErrorMessage(lastError)}`
         )
-
-        const tx = await contract[functionName](...params.args, {
-            value: params.value ?? 0
-        })
-
-        console.log(
-            `[EVMClient:${this.config.name}] TX SENT → ${tx.hash}`
-        )
-
-        await tx.wait()
-
-        console.log(
-            `[EVMClient:${this.config.name}] TX CONFIRMED`
-        )
-
-        return tx.hash
     }
 
     async getEthPrice(priceFeedAddress: string): Promise<number> {
