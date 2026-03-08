@@ -69,7 +69,7 @@ export async function sendDiscordAlert(
                     },
                     {
                         name: "💥 CASCADE PROPAGATION",
-                        value: `Probability: **${(alert.cascade.cascadeProbability * 100).toFixed(0)}%**\nDrain: **-${(alert.cascade.estimatedLiquidityDrain * 100).toFixed(1)}%**\nNodes: ${alert.cascade.affectedProtocols.join(", ") || "None"}`,
+                        value: `Probability: **${(alert.cascade.cascadeProbability * 100).toFixed(0)}%**\nDrain: **-${(alert.cascade.estimatedLiquidityStress * 100).toFixed(1)}%**\nNodes: ${alert.cascade.affectedProtocols.join(", ") || "None"}`,
                         inline: true,
                     },
                 ],

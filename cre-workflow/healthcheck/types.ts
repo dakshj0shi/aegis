@@ -14,6 +14,16 @@ export interface ProtocolMetrics {
     timestamp: number;
 }
 
+export interface ProtocolAdapterResult {
+    name: string;
+    chain: Chain;
+    claimed: number;
+    actual: number;
+    solvencyRatio: number;
+    utilizationBps: number;
+    details: Record<string, unknown>;
+}
+
 export interface VelocityAlert {
     protocol: string;
     chain: Chain;
@@ -51,6 +61,10 @@ export interface RiskReport {
     timestamp: number;
     checkNumber: number;
     ethPrice: number;
+    totalReservesUSD?: number;
+    totalClaimedUSD?: number;
+    globalRatio?: number;
+    anomalyDetected?: boolean;
     protocols: ProtocolMetrics[];
     velocityAlerts: VelocityAlert[];
     contagion: ContagionResult;
@@ -82,6 +96,11 @@ export interface ChainConfig {
     multicallAddress: string;
 }
 
+export interface PriceFeedConfig {
+    ethUsd: Partial<Record<Chain, string>>;
+    usdcUsd: Partial<Record<Chain, string>>;
+}
+
 export interface WorkflowConfig {
     chains: ChainConfig[];
     protocols: string[];
@@ -89,6 +108,7 @@ export interface WorkflowConfig {
     aegisGuardAddress: string;
     attestationRegistryAddress: string;
     policyEngineAddress: string;
+    priceFeeds: PriceFeedConfig;
     aiServiceUrl: string;
     discordWebhookUrl: string;
     intervalSeconds: number;

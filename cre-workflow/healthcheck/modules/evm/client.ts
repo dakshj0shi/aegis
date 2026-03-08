@@ -1,124 +1,209 @@
-// ─── AEGIS EVM Client ───────────────────────────────────────────────────────
-// Wraps Chainlink CRE EVMClient for multi-chain data fetching.
+// ─── AEGIS REAL EVM CLIENT ───────────────────────────────────────────────
+// Sends real transactions using ethers.js
 
-import { ChainConfig, Chain } from "../../types";
+import { ethers } from "ethers"
+import dotenv from "dotenv"
+import { ChainConfig, Chain } from "../../types"
 
-/**
- * Represents an EVM-compatible chain client using Chainlink CRE EVMClient.
- * Handles RPC calls, contract reads, and transaction submission.
- */
+dotenv.config()
+
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL)
+
+const wallet = new ethers.Wallet(
+    process.env.PRIVATE_KEY!,
+    provider
+)
+
 export class EVMClient {
-    private config: ChainConfig;
-    private connected: boolean = false;
+    private config: ChainConfig
+    private connected: boolean = false
 
     constructor(config: ChainConfig) {
-        this.config = config;
+        this.config = config
     }
 
     get chainName(): Chain {
-        return this.config.name;
+        return this.config.name
     }
 
     get chainId(): number {
-        return this.config.chainId;
+        return this.config.chainId
     }
 
-    /**
-     * Initialize connection to the chain's RPC endpoint.
-     * In CRE context, this uses the runtime-provided EVMClient.
-     */
     async connect(): Promise<void> {
-        // In Chainlink CRE, the EVMClient is provided by the runtime
-        // This wrapper abstracts the connection lifecycle
-        console.log(`[EVMClient] Connecting to ${this.config.name} (chainId: ${this.config.chainId})`);
-        this.connected = true;
+        console.log(
+            `[EVMClient] Connected to ${this.config.name} (chainId ${this.config.chainId})`
+        )
+        this.connected = true
     }
 
-    /**
-     * Read data from a smart contract using eth_call.
-     */
     async readContract(params: {
-        contractAddress: string;
-        functionSignature: string;
-        args: unknown[];
-        abi: unknown[];
-    }): Promise<unknown> {
-        if (!this.connected) await this.connect();
+        contractAddress: string
+        functionSignature: string
+        args: unknown[]
+        abi: any[]
+    }): Promise<any> {
 
-        // CRE EVMClient.read() abstraction
-        // In production, this delegates to the CRE runtime's EVMClient
+        if (!this.connected) await this.connect()
+
+        const contract = new ethers.Contract(
+            params.contractAddress,
+            params.abi,
+            provider
+        )
+
+        const functionName = params.functionSignature.split("(")[0]
+
+        const result = await contract[functionName](...params.args)
+
         console.log(
-            `[EVMClient:${this.config.name}] Reading ${params.functionSignature} from ${params.contractAddress}`
-        );
+            `[EVMClient:${this.config.name}] Read ${functionName} from ${params.contractAddress}`
+        )
 
-        return {
-            chain: this.config.name,
-            contractAddress: params.contractAddress,
-            functionSignature: params.functionSignature,
-            result: null, // Populated by CRE runtime
-        };
+        return result
     }
 
-    /**
-     * Submit a transaction to the chain via CRE runtime.
-     */
+    async callContract<T>(params: {
+        contractAddress: string
+        functionSignature: string
+        args: unknown[]
+        abi: any[]
+    }): Promise<T> {
+
+        const result = await this.readContract(params)
+
+        return result as T
+    }
+
     async writeContract(params: {
-        contractAddress: string;
-        functionSignature: string;
-        args: unknown[];
-        abi: unknown[];
-        value?: bigint;
+        contractAddress: string
+        functionSignature: string
+        args: unknown[]
+        abi: any[]
+        value?: bigint
     }): Promise<string> {
-        if (!this.connected) await this.connect();
+
+        if (!this.connected) await this.connect()
+
+        const contract = new ethers.Contract(
+            params.contractAddress,
+            params.abi,
+            wallet
+        )
+
+        const functionName = params.functionSignature.split("(")[0]
 
         console.log(
-            `[EVMClient:${this.config.name}] Writing ${params.functionSignature} to ${params.contractAddress}`
-        );
+            `[EVMClient:${this.config.name}] Sending TX ${functionName}`
+        )
 
-        // Returns transaction hash from CRE runtime
-        return "0x" + "0".repeat(64); // Placeholder — CRE runtime provides actual hash
+        const tx = await contract[functionName](...params.args, {
+            value: params.value ?? 0
+        })
+
+        console.log(
+            `[EVMClient:${this.config.name}] TX SENT → ${tx.hash}`
+        )
+
+        await tx.wait()
+
+        console.log(
+            `[EVMClient:${this.config.name}] TX CONFIRMED`
+        )
+
+        return tx.hash
     }
 
-    /**
-     * Fetch the current ETH price from Chainlink price feed.
-     */
     async getEthPrice(priceFeedAddress: string): Promise<number> {
-        const result = await this.readContract({
+
+        const abi = [
+            {
+                inputs: [],
+                name: "latestRoundData",
+                outputs: [
+                    { name: "roundId", type: "uint80" },
+                    { name: "answer", type: "int256" },
+                    { name: "startedAt", type: "uint256" },
+                    { name: "updatedAt", type: "uint256" },
+                    { name: "answeredInRound", type: "uint80" }
+                ],
+                stateMutability: "view",
+                type: "function"
+            }
+        ]
+
+        const result = await this.callContract<any>({
             contractAddress: priceFeedAddress,
             functionSignature: "latestRoundData()",
             args: [],
-            abi: [
-                {
-                    inputs: [],
-                    name: "latestRoundData",
-                    outputs: [
-                        { name: "roundId", type: "uint80" },
-                        { name: "answer", type: "int256" },
-                        { name: "startedAt", type: "uint256" },
-                        { name: "updatedAt", type: "uint256" },
-                        { name: "answeredInRound", type: "uint80" },
-                    ],
-                    stateMutability: "view",
-                    type: "function",
-                },
-            ],
-        });
+            abi
+        })
 
-        // In CRE, the price feed returns answer with 8 decimals
-        // Default to ~$3000 for demo purposes
-        return 3000.0;
+        if (!result) return 3000
+
+        const answer = result[1]
+
+        return Number(answer) / 1e8
     }
 
-}
+    async writeReport(params: {
+        contractAddress: string
+        payload: `0x${string}`
+        protocolReports: {
+            name: string
+            chain: string
+            claimed: bigint
+            actual: bigint
+            solvencyRatioBps: bigint
+            utilizationBps: bigint
+            timestamp: bigint
+        }[]
+    }): Promise<string> {
+
+        const abi = [
+            {
+                inputs: [
+                    { name: "payload", type: "bytes" },
+                    {
+                        name: "protocols",
+                        type: "tuple[]",
+                        components: [
+                            { name: "name", type: "string" },
+                            { name: "chain", type: "string" },
+                            { name: "claimed", type: "uint256" },
+                            { name: "actual", type: "uint256" },
+                            { name: "solvencyRatioBps", type: "uint256" },
+                            { name: "utilizationBps", type: "uint256" },
+                            { name: "timestamp", type: "uint256" }
+                        ]
+                    }
+                ],
+                name: "onReport",
+                outputs: [],
+                stateMutability: "nonpayable",
+                type: "function"
+            }
+        ]
+
+        return this.writeContract({
+            contractAddress: params.contractAddress,
+            functionSignature:
+                "onReport(bytes,(string,string,uint256,uint256,uint256,uint256,uint256)[])",
+            args: [params.payload, params.protocolReports],
+            abi
+        })
+    }
 }
 
-/**
- * Factory: create EVMClient instances for all configured chains.
- */
-export function createClients(chains: ChainConfig[]): Map<Chain, EVMClient> {
-    const clients = new Map<Chain, EVMClient>();
+export function createClients(
+    chains: ChainConfig[]
+): Map<Chain, EVMClient> {
+
+    const clients = new Map<Chain, EVMClient>()
+
     for (const chain of chains) {
-        clients.set(chain.name, new EVMClient(chain));
+        clients.set(chain.name, new EVMClient(chain))
     }
-    return clients;
+
+    return clients
 }

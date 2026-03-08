@@ -1,7 +1,7 @@
 // ─── Uniswap Protocol Adapter ───────────────────────────────────────────────
 // Fetches Uniswap V3 pool data and TVL across chains.
 
-import { ProtocolMetrics, Chain } from "../../types";
+import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
 // Uniswap V3 Factory addresses per chain
@@ -42,18 +42,18 @@ const UNISWAP_ABI = [
 export async function fetchUniswapMetrics(
     client: EVMClient,
     chain: Chain
-): Promise<ProtocolMetrics> {
+): Promise<ProtocolAdapterResult> {
     const factoryAddress = UNISWAP_FACTORY_ADDRESSES[chain];
 
     if (!factoryAddress) {
         return {
-            protocol: "uniswap",
+            name: "Uniswap V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { reason: "unsupported-chain" },
         };
     }
 
@@ -61,7 +61,7 @@ export async function fetchUniswapMetrics(
 
     try {
         // In production, query top pools' liquidity via multicall
-        await client.readContract({
+        await client.callContract({
             contractAddress: factoryAddress,
             functionSignature: "getPool(address,address,uint24)",
             args: [],
@@ -73,24 +73,24 @@ export async function fetchUniswapMetrics(
         const activeLiquidity = 3_800_000_000;
 
         return {
-            protocol: "uniswap",
+            name: "Uniswap V3",
             chain,
-            claimedReserves: totalLiquidity,
-            actualReserves: activeLiquidity,
+            claimed: totalLiquidity,
+            actual: activeLiquidity,
             solvencyRatio: activeLiquidity / totalLiquidity,
-            utilization: 0.45, // Trading volume / liquidity ratio
-            timestamp: Date.now(),
+            utilizationBps: 4500, // Trading volume / liquidity ratio
+            details: { adapter: "uniswap-v3" },
         };
     } catch (error) {
         console.error(`[Uniswap:${chain}] Error:`, error);
         return {
-            protocol: "uniswap",
+            name: "Uniswap V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { adapter: "uniswap-v3", error: (error as Error).message, degraded: true },
         };
     }
 }
@@ -100,8 +100,8 @@ export async function fetchUniswapMetrics(
  */
 export async function fetchUniswapMultichain(
     clients: Map<Chain, EVMClient>
-): Promise<ProtocolMetrics[]> {
-    const results: ProtocolMetrics[] = [];
+): Promise<ProtocolAdapterResult[]> {
+    const results: ProtocolAdapterResult[] = [];
 
     for (const [chain, client] of clients) {
         if (!UNISWAP_FACTORY_ADDRESSES[chain]) continue;

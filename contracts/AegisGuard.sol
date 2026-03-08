@@ -104,4 +104,17 @@ contract AegisGuard is AccessControl, ReentrancyGuard, Pausable {
         _unpause();
         emit GlobalRecoveryInitiated();
     }
+
+    function getGuardStatus() external view returns (bool globalPaused, uint256 protectedCount, uint256 pausedCount) {
+        globalPaused = paused();
+        protectedCount = protectedProtocols.length;
+
+        uint256 count = 0;
+        for (uint256 i = 0; i < protectedProtocols.length; i++) {
+            if (isPaused[protectedProtocols[i]]) {
+                count++;
+            }
+        }
+        pausedCount = count;
+    }
 }

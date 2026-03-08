@@ -68,6 +68,20 @@ function processRiskAnalysis(data) {
     };
 }
 
+function mapScorePayload(payload) {
+    const utilization = Math.max(0, Math.min(1, payload.utilization ?? 0));
+    const contagionScore = Math.max(0, Math.min(1, payload.contagionScore ?? 0));
+    const volatility = Math.max(0, Math.min(1, payload.volatility ?? 0));
+
+    return {
+        velocity: utilization,
+        solvency: 1 - utilization,
+        contagion: contagionScore,
+        cascadeRisk: contagionScore * 0.7,
+        tvlVolatility: volatility,
+    };
+}
+
 function generateExplanation(score, vectors) {
     if (score < 30) return "Global liquidity signals are stable. No systemic shocks detected.";
     if (score < 60) return "Elevated volatility detected in utilitzation vectors. Monitoring cross-chain nodes for contagion.";
@@ -82,10 +96,10 @@ function generateExplanation(score, vectors) {
  * Legacy support for basic scoring
  */
 app.post("/risk-score", (req, res) => {
-    const analysis = processRiskAnalysis(req.body);
+    const analysis = processRiskAnalysis(mapScorePayload(req.body));
     res.json({
         riskScore: analysis.riskScore,
-        riskExplanation: analysis.riskExplanation
+        explanation: analysis.riskExplanation
     });
 });
 

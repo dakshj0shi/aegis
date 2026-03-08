@@ -1,7 +1,7 @@
 // ─── Maker Protocol Adapter ─────────────────────────────────────────────────
 // Fetches MakerDAO / SKY protocol data (DAI stability, DSR, vaults).
 
-import { ProtocolMetrics, Chain } from "../../types";
+import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
 // Maker core contract addresses (Ethereum mainnet only)
@@ -36,16 +36,16 @@ const MAKER_ABI = [
 export async function fetchMakerMetrics(
     client: EVMClient,
     chain: Chain
-): Promise<ProtocolMetrics> {
+): Promise<ProtocolAdapterResult> {
     if (chain !== "ethereum") {
         return {
-            protocol: "maker",
+            name: "MakerDAO",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { reason: "unsupported-chain" },
         };
     }
 
@@ -53,14 +53,14 @@ export async function fetchMakerMetrics(
 
     try {
         // Read total debt ceiling (Line) and current debt
-        await client.readContract({
+        await client.callContract({
             contractAddress: MAKER_ADDRESSES.vat,
             functionSignature: "Line()",
             args: [],
             abi: MAKER_ABI,
         });
 
-        await client.readContract({
+        await client.callContract({
             contractAddress: MAKER_ADDRESSES.vat,
             functionSignature: "debt()",
             args: [],
@@ -73,24 +73,24 @@ export async function fetchMakerMetrics(
         const collateral = 10_400_000_000; // $10.4B collateral (200% ratio)
 
         return {
-            protocol: "maker",
+            name: "MakerDAO",
             chain,
-            claimedReserves: collateral,
-            actualReserves: collateral - currentDebt,
+            claimed: collateral,
+            actual: collateral - currentDebt,
             solvencyRatio: (collateral - currentDebt) / collateral,
-            utilization: currentDebt / debtCeiling,
-            timestamp: Date.now(),
+            utilizationBps: Math.round((currentDebt / debtCeiling) * 10_000),
+            details: { adapter: "maker" },
         };
     } catch (error) {
         console.error(`[Maker:${chain}] Error:`, error);
         return {
-            protocol: "maker",
+            name: "MakerDAO",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { adapter: "maker", error: (error as Error).message, degraded: true },
         };
     }
 }
@@ -100,7 +100,7 @@ export async function fetchMakerMetrics(
  */
 export async function fetchMakerMultichain(
     clients: Map<Chain, EVMClient>
-): Promise<ProtocolMetrics[]> {
+): Promise<ProtocolAdapterResult[]> {
     const ethClient = clients.get("ethereum");
     if (!ethClient) return [];
 

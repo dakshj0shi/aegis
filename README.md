@@ -15,20 +15,18 @@ AEGIS operates as an autonomous loop orchestrated by Chainlink CRE (Chainlink Ru
 │                         CHAINLINK CRE DON                               │
 │                                                                         │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                  │
-│   │  ETH Price    │  │  DeFiLlama   │  │  AI Risk     │                  │
-│   │  Feed         │  │  TVL API     │  │  Engine      │                  │
+│   │  Chainlink    │  │  Protocol    │  │  AI Risk     │                  │
+│   │  Price Feeds  │  │  Adapters    │  │  Engine      │                  │
 │   └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                  │
 │          │                 │                  │                          │
 │   ┌──────▼─────────────────▼──────────────────▼───────┐                  │
 │   │              AEGIS WORKFLOW (60s)                   │                  │
 │   │                                                    │                  │
-│   │  1. Load Policy    8. AI Risk Analysis             │                  │
-│   │  2. ETH Price      9. Systemic Aggregation         │                  │
-│   │  3. Protocol Data  10. Forensic Report             │                  │
-│   │  4. TVL Data       11. → RiskOracle                │                  │
-│   │  5. Velocity       12. → AegisGuard (Breaker)      │                  │
-│   │  6. Contagion      13. → Attestation Registry      │                  │
-│   │  7. Cascade Prop   14. → Discord Sentinel          │                  │
+│   │  1. Load Policy     6. Velocity + Contagion        │                  │
+│   │  2. Protocol State  7. AI Risk Engine              │                  │
+│   │  3. Price Feeds     8. Risk Score Aggregation      │                  │
+│   │  4. Utilization     9. Encode Report Payload       │                  │
+│   │  5. Cascade         10. → RiskOracle.onReport()    │                  │
 │   └──────┬────────────────────────────────┬────────────┘                  │
 │          │                                │                              │
 └──────────┼────────────────────────────────┼%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%┘
@@ -53,7 +51,8 @@ AEGIS operates as an autonomous loop orchestrated by Chainlink CRE (Chainlink Ru
 
 ## Key Features
 
-- **Multi-Chain Intelligence** — Real-time monitoring of Aave, Compound, Uniswap across 3 networks.
+- **Multi-Chain Intelligence** — Real-time monitoring of Aave V3, Compound V3, Uniswap V3, MakerDAO, Lido across 3 networks.
+- **Chainlink Data Feeds** — ETH/USD and USDC/USD normalization for risk calculations.
 - **AI Risk Assessment** — Weighted multi-vector model with non-linear systemic amplification and confidence scores.
 - **Propagation Modeling** — Graph-based cascade simulation predicting how liquidity shocks spread between nodes.
 - **Autonomous Enforcement** — Smart contract circuit breakers (AegisGuard) and dynamic policy adjustment (PolicyEngine).
@@ -67,7 +66,7 @@ AEGIS operates as an autonomous loop orchestrated by Chainlink CRE (Chainlink Ru
 ```
 aegis/
 ├── cre-workflow/            # Chainlink CRE Logic
-│   └── healthcheck/         # Core 14-step loop
+│   └── healthcheck/         # Core 10-step loop
 ├── contracts/               # Solidity Enforcement Layer
 │   ├── AegisGuard.sol       # Circuit Breaker + RBAC
 │   ├── RiskOracle.sol       # DON-signed data storage
@@ -148,7 +147,7 @@ Confidence scores drop during high volatility, flagging assessments for human re
 
 The smart contract layer provides the **Security Enforcement**.
 
-1. **RiskOracle**: Stores consensus-signed reports from the DON. Supports historical retrieval for transparency.
+1. **RiskOracle**: Stores consensus-signed reports from the DON. Supports `onReport` payload ingestion and protocol-level reports.
 2. **AegisGuard**: Multi-mode circuit breaker. Can pause specific protocols or initiate a global shutdown.
 3. **PolicyEngine**: Dynamically adjusts borrowing caps and collateral requirements based on current risk severity.
 4. **AttestationRegistry**: Verifiable audit trail for institutional compliance.
@@ -170,7 +169,14 @@ To enable valid multi-chain data ingestion (non-simulated), configure the follow
 - `RPC_ETHEREUM`: Mainnet ETH RPC provider.
 - `RPC_ARBITRUM`: Arbitrum RPC provider.
 - `RPC_BASE`: Base RPC provider.
+- `NEXT_PUBLIC_RPC_URL`: RPC used by the dashboard poller.
 - `NEXT_PUBLIC_RISK_ORACLE_ADDRESS`: The deployed address of the Aegis RiskOracle.
+- `NEXT_PUBLIC_AEGIS_GUARD_ADDRESS`: The deployed address of the AegisGuard.
+
+### Chainlink Price Feeds
+Configured in `cre-workflow/healthcheck/config/config.staging.json`:
+- `priceFeeds.ethUsd`
+- `priceFeeds.usdcUsd`
 
 If these variables are missing, the system automatically defaults to **High-Fidelity Simulation Mode** to ensure dashboard availability and demo stability.
 
@@ -178,3 +184,10 @@ If these variables are missing, the system automatically defaults to **High-Fide
 
 MIT — Built for Chainlink Intelligence Network 2025
 Property of Advanced Institutional Risk Lab
+# 3. Run the CRE Workflow (Local)
+
+```bash
+cd aegis/cre-workflow/healthcheck
+npm install
+npm run start
+```

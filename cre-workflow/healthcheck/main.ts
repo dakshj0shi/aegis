@@ -1,7 +1,7 @@
 // ─── AEGIS CRE Workflow Entry Point ─────────────────────────────────────────
 // Registers the AEGIS health check workflow with Chainlink CRE runtime.
 
-import { execute, WorkflowRuntime } from "./workflow.def";
+import { execute, WorkflowRuntime, cronTrigger } from "./workflow.def";
 import { validateConfig } from "./config/schema";
 import stagingConfig from "./config/config.staging.json";
 
@@ -15,10 +15,12 @@ export const workflowSpec = {
         "AEGIS — Autonomous Economic Guardrail & Intelligence System. " +
         "Multi-chain DeFi risk monitoring and autonomous protection via Chainlink CRE.",
     trigger: {
-        type: "schedule",
-        interval: "60s",
+        type: "cron",
+        capability: "CronCapability",
+        schedule: cronTrigger.schedule,
     },
     capabilities: [
+        "CronCapability",
         "EVMClient",
         "Secrets",
         "HTTP",
@@ -62,26 +64,30 @@ export async function main(creRuntime: {
     };
 }
 
-// ─── Local Development Runner ───────────────────────────────────────────────
-// Allows running the workflow locally for development and testing.
+// ───  Development Runner ───────────────────────────────────────────────
+// Allows running the workflow for development and testing.
 
 if (typeof process !== "undefined" && process.argv?.includes("--local")) {
     console.log("🔧 Running AEGIS workflow in local development mode...\n");
 
     const mockRuntime = {
-        getSecret: async (key: string) => {
-            console.log(`[Mock] Secret requested: ${key}`);
-            return "mock-secret-value";
-        },
+        getSecret: async () => "mock-secret",
         getEnvironment: () => "local",
     };
 
-    main(mockRuntime)
-        .then((result) => {
-            console.log("\n📊 Workflow Result:", JSON.stringify(result, null, 2));
-        })
-        .catch((error) => {
-            console.error("❌ Workflow failed:", error);
-            process.exit(1);
-        });
+    const loop = async () => {
+        while (true) {
+            try {
+                const result = await main(mockRuntime);
+                console.log("\n📊 Workflow Result:", JSON.stringify(result, null, 2));
+            } catch (err) {
+                console.error("❌ Workflow failed:", err);
+            }
+
+            console.log("\n⏳ Waiting 60 seconds for next cycle...\n");
+            await new Promise((r) => setTimeout(r, 60000));
+        }
+    };
+
+    loop();
 }

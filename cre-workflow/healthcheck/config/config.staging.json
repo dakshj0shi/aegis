@@ -23,12 +23,21 @@
         "aave",
         "compound",
         "uniswap",
-        "maker"
+        "maker",
+        "lido"
     ],
-    "riskOracleAddress": "0xf8e81D47203A594245E36C48e151709F0C19fBe8",
-    "aegisGuardAddress": "0xD7ACd2a9FD159E69Bb102A1ca21C9a3e3A5F771B",
-    "attestationRegistryAddress": "0xd9145CCE52D386f254917e481eB44e9943F39138",
-    "policyEngineAddress": "0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8",
+    "priceFeeds": {
+        "ethUsd": {
+            "ethereum": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+        },
+        "usdcUsd": {
+            "ethereum": "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"
+        }
+    },
+    "riskOracleAddress": "0xbE2ff1055f2276cD4988b98bEC1b2dFEDDc3aF30",
+    "aegisGuardAddress": "0x606A39EaC6AFf9ef72E142F3B8bFb2D2EE79B468",
+    "attestationRegistryAddress": "0x493672D3994E492B6a5Ea849F42e9007730A536e",
+    "policyEngineAddress": "0x61A335F9ee5c2928AF9BC8F070A548EaaF415F4E",
     "aiServiceUrl": "http://localhost:3001",
     "discordWebhookUrl": "",
     "intervalSeconds": 60,

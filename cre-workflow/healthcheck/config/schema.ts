@@ -9,7 +9,7 @@ const SUPPORTED_CHAINS: Chain[] = [
     "base",
 ];
 
-const SUPPORTED_PROTOCOLS = ["aave", "compound", "uniswap", "maker"];
+const SUPPORTED_PROTOCOLS = ["aave", "compound", "uniswap", "maker", "lido"];
 
 export const CONFIG_SCHEMA = {
     chains: {
@@ -28,6 +28,14 @@ export const CONFIG_SCHEMA = {
         required: true,
         description: "List of protocol names to monitor",
         items: { type: "string", enum: SUPPORTED_PROTOCOLS },
+    },
+    priceFeeds: {
+        type: "object",
+        required: true,
+        properties: {
+            ethUsd: { type: "object", required: true },
+            usdcUsd: { type: "object", required: true },
+        },
     },
     riskOracleAddress: { type: "string", format: "address", required: true },
     aegisGuardAddress: { type: "string", format: "address", required: true },
@@ -82,6 +90,10 @@ export function validateConfig(config: unknown): config is WorkflowConfig {
 
     if (!Array.isArray(c.protocols) || c.protocols.length === 0) {
         throw new Error("Invalid config: protocols must be a non-empty array");
+    }
+
+    if (!c.priceFeeds || typeof c.priceFeeds !== "object") {
+        throw new Error("Invalid config: priceFeeds must be defined");
     }
 
     return true;

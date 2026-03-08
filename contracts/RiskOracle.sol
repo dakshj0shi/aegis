@@ -4,6 +4,15 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+interface IAttestationRegistry {
+    function recordAttestation(
+        bytes32 _policyHash,
+        uint256 _riskScore,
+        uint256 _confidence,
+        uint256 _checkNumber
+    ) external;
+}
+
 /**
  * @title RiskOracle
  * @author AEGIS — Autonomous Economic Guardrail & Intelligence System
@@ -25,6 +34,25 @@ contract RiskOracle is AccessControl, Pausable {
 
     RiskReport public latestReport;
     RiskReport[] public reportHistory;
+    Severity public globalRiskState;
+    uint256 public latestCheckNumber;
+    bool public anomalyDetected;
+    uint256 public lastTotalReservesUSD;
+    uint256 public lastTotalClaimedUSD;
+    uint256 public lastGlobalRatioBps;
+    IAttestationRegistry public attestationRegistry;
+
+    struct ProtocolReport {
+        string name;
+        string chain;
+        uint256 claimed;
+        uint256 actual;
+        uint256 solvencyRatioBps;
+        uint256 utilizationBps;
+        uint256 timestamp;
+    }
+
+    ProtocolReport[] public latestProtocolReports;
 
     // ─── Events ──────────────────────────────────────────────────────────────
 
@@ -39,6 +67,8 @@ contract RiskOracle is AccessControl, Pausable {
 
     event OraclePaused(address account);
     event OracleUnpaused(address account);
+    event ProtocolReportsUpdated(uint256 count, bool anomalyDetected);
+    event AttestationRegistryUpdated(address registry);
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -81,6 +111,71 @@ contract RiskOracle is AccessControl, Pausable {
         );
     }
 
+    /**
+     * @notice Canonical report entrypoint for Chainlink CRE workflows.
+     * Payload encoded via encodeAbiParameters in workflow.
+     */
+    function onReport(
+        bytes calldata payload,
+        ProtocolReport[] calldata protocols
+    ) external onlyRole(REPORTER_ROLE) whenNotPaused {
+        (
+            uint256 totalReservesUSD,
+            uint256 totalClaimedUSD,
+            uint256 globalRatioBps,
+            uint256 riskScore,
+            uint256 timestamp,
+            uint256 checkNumber,
+            uint8 severityRaw,
+            bool anomaly,
+            bytes32 policyHash
+        ) = abi.decode(payload, (uint256, uint256, uint256, uint256, uint256, uint256, uint8, bool, bytes32));
+
+        Severity severity = Severity(severityRaw);
+        uint256 confidence = 9500;
+
+        latestReport = RiskReport({
+            riskScore: riskScore,
+            severity: severity,
+            timestamp: timestamp > 0 ? timestamp : block.timestamp,
+            confidence: confidence,
+            policyHash: policyHash,
+            reporter: msg.sender
+        });
+
+        reportHistory.push(latestReport);
+
+        globalRiskState = severity;
+        latestCheckNumber = checkNumber;
+        anomalyDetected = anomaly;
+        lastTotalReservesUSD = totalReservesUSD;
+        lastTotalClaimedUSD = totalClaimedUSD;
+        lastGlobalRatioBps = globalRatioBps;
+
+        delete latestProtocolReports;
+        for (uint256 i = 0; i < protocols.length; i++) {
+            latestProtocolReports.push(protocols[i]);
+        }
+
+        if (address(attestationRegistry) != address(0)) {
+            try attestationRegistry.recordAttestation(policyHash, riskScore, confidence, checkNumber) {
+            } catch {
+                // no-op on attestation failure
+            }
+        }
+
+        emit RiskReportSubmitted(
+            reportHistory.length - 1,
+            riskScore,
+            severity,
+            confidence,
+            policyHash,
+            msg.sender
+        );
+
+        emit ProtocolReportsUpdated(protocols.length, anomaly);
+    }
+
     // ─── View Functions ───────────────────────────────────────────────────────
 
     function getReportHistory(uint256 limit) external view returns (RiskReport[] memory) {
@@ -92,6 +187,10 @@ contract RiskOracle is AccessControl, Pausable {
             results[i] = reportHistory[count - 1 - i];
         }
         return results;
+    }
+
+    function getProtocolReports() external view returns (ProtocolReport[] memory) {
+        return latestProtocolReports;
     }
 
     function getLatestReport() external view returns (
@@ -120,5 +219,10 @@ contract RiskOracle is AccessControl, Pausable {
     function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
         emit OracleUnpaused(msg.sender);
+    }
+
+    function setAttestationRegistry(address _registry) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        attestationRegistry = IAttestationRegistry(_registry);
+        emit AttestationRegistryUpdated(_registry);
     }
 }

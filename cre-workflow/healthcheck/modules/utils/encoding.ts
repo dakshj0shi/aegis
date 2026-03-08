@@ -1,6 +1,7 @@
 // ─── Encoding Utilities ─────────────────────────────────────────────────────
 // ABI encoding/decoding helpers for on-chain report submission.
 
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 import { RiskReport, Severity, ComplianceAttestation } from "../../types";
 
 /**
@@ -20,6 +21,40 @@ export function encodeRiskReport(report: RiskReport): string {
     ].join("");
 
     return "0x" + encoded;
+}
+
+/**
+ * Encode canonical risk report payload for RiskOracle.onReport().
+ */
+export function encodeRiskReportPayload(payload: {
+    totalReservesUSD: number;
+    totalClaimedUSD: number;
+    globalRatio: number;
+    riskScore: number;
+    timestamp: number;
+    checkNumber: number;
+    severity: Severity;
+    anomalyDetected: boolean;
+    policyHash: string;
+}): `0x${string}` {
+    const encoded = encodeAbiParameters(
+        parseAbiParameters(
+            "uint256 totalReservesUSD, uint256 totalClaimedUSD, uint256 globalRatioBps, uint256 riskScore, uint256 timestamp, uint256 checkNumber, uint8 severity, bool anomalyDetected, bytes32 policyHash"
+        ),
+        [
+            BigInt(Math.floor(payload.totalReservesUSD)),
+            BigInt(Math.floor(payload.totalClaimedUSD)),
+            BigInt(Math.floor(payload.globalRatio * 10_000)),
+            BigInt(payload.riskScore),
+            BigInt(Math.floor(payload.timestamp / 1000)),
+            BigInt(payload.checkNumber),
+            severityToUint(payload.severity),
+            payload.anomalyDetected,
+            payload.policyHash as `0x${string}`,
+        ]
+    );
+
+    return encoded;
 }
 
 /**

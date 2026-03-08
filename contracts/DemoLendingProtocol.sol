@@ -40,7 +40,8 @@ contract DemoLendingProtocol is ReentrancyGuard {
         require(deposits[msg.sender] * 75 / 100 >= borrows[msg.sender] + amount, "Insufficient collateral");
         
         borrows[msg.sender] += amount;
-        payable(msg.sender).transfer(amount);
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Transfer failed");
         emit LiquidFundsMovement(msg.sender, amount, "BORROW");
     }
 

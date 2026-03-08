@@ -1,7 +1,7 @@
 // ─── Aave Protocol Adapter ──────────────────────────────────────────────────
 // Fetches Aave V3 pool data across supported chains.
 
-import { ProtocolMetrics, Chain } from "../../types";
+import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
 // Aave V3 Pool addresses per chain
@@ -31,24 +31,24 @@ const AAVE_ABI = [
 export async function fetchAaveMetrics(
     client: EVMClient,
     chain: Chain
-): Promise<ProtocolMetrics> {
+): Promise<ProtocolAdapterResult> {
     const poolAddress = AAVE_POOL_ADDRESSES[chain];
     const startTime = Date.now();
 
     if (!poolAddress) {
         return {
-            protocol: "Aave",
+            name: "Aave V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { reason: "unsupported-chain" },
         };
     }
 
     try {
-        await client.readContract({
+        await client.callContract({
             contractAddress: poolAddress,
             functionSignature: "getReserveData(address)",
             args: ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"], // WETH
@@ -64,24 +64,24 @@ export async function fetchAaveMetrics(
         console.log(`[ADAPTER:Aave] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms Status: HIGH_AVAILABILITY`);
 
         return {
-            protocol: "Aave",
+            name: "Aave V3",
             chain,
-            claimedReserves: tvl,
-            actualReserves: tvl * (1 - util),
+            claimed: tvl,
+            actual: tvl * (1 - util),
             solvencyRatio: 1.0 - (util * 0.05), // Model solvency drop
-            utilization: util,
-            timestamp: Date.now(),
+            utilizationBps: Math.round(util * 10_000),
+            details: { adapter: "aave-v3", stressed: isStressed },
         };
     } catch (error) {
         console.error(`[ADAPTER:Aave] CRITICAL FAILURE on ${chain}:`, (error as Error).message);
         return {
-            protocol: "Aave",
+            name: "Aave V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 0.5, // Return stressed state on adapter failure for safety
-            utilization: 1.0,
-            timestamp: Date.now(),
+            utilizationBps: 10_000,
+            details: { adapter: "aave-v3", error: (error as Error).message, degraded: true },
         };
     }
 }
@@ -91,8 +91,8 @@ export async function fetchAaveMetrics(
  */
 export async function fetchAaveMultichain(
     clients: Map<Chain, EVMClient>
-): Promise<ProtocolMetrics[]> {
-    const results: ProtocolMetrics[] = [];
+): Promise<ProtocolAdapterResult[]> {
+    const results: ProtocolAdapterResult[] = [];
 
     for (const [chain, client] of clients) {
         const metrics = await fetchAaveMetrics(client, chain);

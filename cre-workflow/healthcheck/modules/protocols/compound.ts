@@ -1,7 +1,7 @@
 // ─── Compound Protocol Adapter ──────────────────────────────────────────────
 // Fetches Compound V3 (Comet) data across supported chains.
 
-import { ProtocolMetrics, Chain } from "../../types";
+import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
 // Compound V3 Comet addresses per chain
@@ -38,24 +38,24 @@ const COMPOUND_ABI = [
 export async function fetchCompoundMetrics(
     client: EVMClient,
     chain: Chain
-): Promise<ProtocolMetrics> {
+): Promise<ProtocolAdapterResult> {
     const cometAddress = COMPOUND_COMET_ADDRESSES[chain];
     const startTime = Date.now();
 
     if (!cometAddress) {
         return {
-            protocol: "Compound",
+            name: "Compound V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 1.0,
-            utilization: 0,
-            timestamp: Date.now(),
+            utilizationBps: 0,
+            details: { reason: "unsupported-chain" },
         };
     }
 
     try {
-        await client.readContract({
+        await client.callContract({
             contractAddress: cometAddress,
             functionSignature: "totalSupply()",
             args: [],
@@ -69,24 +69,24 @@ export async function fetchCompoundMetrics(
         console.log(`[ADAPTER:Compound] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms`);
 
         return {
-            protocol: "Compound",
+            name: "Compound V3",
             chain,
-            claimedReserves: tvl,
-            actualReserves: tvl * (1 - util),
+            claimed: tvl,
+            actual: tvl * (1 - util),
             solvencyRatio: 1.0 - (util * 0.08),
-            utilization: util,
-            timestamp: Date.now(),
+            utilizationBps: Math.round(util * 10_000),
+            details: { adapter: "compound-v3", stressed: isStressed },
         };
     } catch (error) {
         console.error(`[ADAPTER:Compound] FAILURE on ${chain}:`, error);
         return {
-            protocol: "Compound",
+            name: "Compound V3",
             chain,
-            claimedReserves: 0,
-            actualReserves: 0,
+            claimed: 0,
+            actual: 0,
             solvencyRatio: 0.5,
-            utilization: 1.0,
-            timestamp: Date.now(),
+            utilizationBps: 10_000,
+            details: { adapter: "compound-v3", error: (error as Error).message, degraded: true },
         };
     }
 }
@@ -96,8 +96,8 @@ export async function fetchCompoundMetrics(
  */
 export async function fetchCompoundMultichain(
     clients: Map<Chain, EVMClient>
-): Promise<ProtocolMetrics[]> {
-    const results: ProtocolMetrics[] = [];
+): Promise<ProtocolAdapterResult[]> {
+    const results: ProtocolAdapterResult[] = [];
 
     for (const [chain, client] of clients) {
         if (!COMPOUND_COMET_ADDRESSES[chain]) continue;
