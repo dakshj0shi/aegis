@@ -4,7 +4,11 @@
 import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
-const COMPOUND_COMET_ETHEREUM = "0xc3d688B66703497DAA19211EEdff47f25384cdc3";
+const COMPOUND_COMET_BY_CHAIN: Record<Chain, string> = {
+    ethereum: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+    arbitrum: "0x9c4ec768c28520B50860ea7a15BD7213a9fF58bf",
+    base: "0xb125E6687d4313864e53df431d5425969c15Eb2F",
+};
 
 const COMPOUND_ABI = [
     {
@@ -35,28 +39,18 @@ export async function fetchCompoundMetrics(
     chain: Chain
 ): Promise<ProtocolAdapterResult> {
     const startTime = Date.now();
-
-    if (chain !== "ethereum") {
-        return {
-            name: "Compound V3",
-            chain,
-            claimed: 0,
-            actual: 0,
-            solvencyRatio: 1.0,
-            utilizationBps: 0,
-            details: { reason: "unsupported-chain" },
-        };
-    }
+    const timestamp = Math.floor(Date.now() / 1000);
 
     try {
+        const comet = COMPOUND_COMET_BY_CHAIN[chain];
         const totalSupply = await client.callContract<bigint>({
-            contractAddress: COMPOUND_COMET_ETHEREUM,
+            contractAddress: comet,
             functionSignature: "totalSupply()",
             args: [],
             abi: COMPOUND_ABI,
         });
         const totalBorrow = await client.callContract<bigint>({
-            contractAddress: COMPOUND_COMET_ETHEREUM,
+            contractAddress: comet,
             functionSignature: "totalBorrow()",
             args: [],
             abi: COMPOUND_ABI,
@@ -67,7 +61,7 @@ export async function fetchCompoundMetrics(
         const claimed = Number(claimedRaw / 10n ** 6n);
         const actual = Number((claimedRaw - borrowedRaw) / 10n ** 6n);
         const utilizationBps = Number((borrowedRaw * 10_000n) / claimedRaw);
-        const solvencyRatio = claimed > 0 ? actual / claimed : 1;
+        const solvencyRatioBps = claimed > 0 ? Math.round((actual / claimed) * 10_000) : 10_000;
 
         console.log(`[ADAPTER:Compound] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms`);
 
@@ -76,9 +70,10 @@ export async function fetchCompoundMetrics(
             chain,
             claimed,
             actual,
-            solvencyRatio,
+            solvencyRatioBps,
             utilizationBps,
-            details: { adapter: "compound-v3", comet: COMPOUND_COMET_ETHEREUM, source: "mainnet" },
+            timestamp,
+            details: { adapter: "compound-v3", comet, source: chain },
         };
     } catch (error) {
         console.error(`[ADAPTER:Compound] FAILURE on ${chain}:`, error);
@@ -87,8 +82,9 @@ export async function fetchCompoundMetrics(
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 0.5,
+            solvencyRatioBps: 5_000,
             utilizationBps: 10_000,
+            timestamp,
             details: { adapter: "compound-v3", error: (error as Error).message, degraded: true },
         };
     }
@@ -100,7 +96,6 @@ export async function fetchCompoundMetrics(
 export async function fetchCompoundMultichain(
     clients: Map<Chain, EVMClient>
 ): Promise<ProtocolAdapterResult[]> {
-    const ethClient = clients.get("ethereum");
-    if (!ethClient) return [];
-    return [await fetchCompoundMetrics(ethClient, "ethereum")];
+    const tasks = Array.from(clients.entries()).map(([chain, client]) => fetchCompoundMetrics(client, chain));
+    return Promise.all(tasks);
 }

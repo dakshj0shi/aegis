@@ -37,14 +37,16 @@ export async function fetchMakerMetrics(
     client: EVMClient,
     chain: Chain
 ): Promise<ProtocolAdapterResult> {
+    const timestamp = Math.floor(Date.now() / 1000);
     if (chain !== "ethereum") {
         return {
             name: "MakerDAO",
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 1.0,
+            solvencyRatioBps: 10_000,
             utilizationBps: 0,
+            timestamp,
             details: { reason: "unsupported-chain" },
         };
     }
@@ -76,8 +78,9 @@ export async function fetchMakerMetrics(
             chain,
             claimed: collateral,
             actual: collateral - safeDebt,
-            solvencyRatio: collateral > 0 ? (collateral - safeDebt) / collateral : 1,
+            solvencyRatioBps: collateral > 0 ? Math.round(((collateral - safeDebt) / collateral) * 10_000) : 10_000,
             utilizationBps: debtCeiling > 0 ? Math.round((safeDebt / debtCeiling) * 10_000) : 0,
+            timestamp,
             details: { adapter: "maker", vat: MAKER_ADDRESSES.vat, source: "mainnet" },
         };
     } catch (error) {
@@ -87,8 +90,9 @@ export async function fetchMakerMetrics(
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 1.0,
+            solvencyRatioBps: 10_000,
             utilizationBps: 0,
+            timestamp,
             details: { adapter: "maker", error: (error as Error).message, degraded: true },
         };
     }

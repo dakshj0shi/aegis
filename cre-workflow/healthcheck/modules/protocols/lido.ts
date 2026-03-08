@@ -27,14 +27,16 @@ export async function fetchLidoMetrics(
     client: EVMClient,
     chain: Chain
 ): Promise<ProtocolAdapterResult> {
+    const timestamp = Math.floor(Date.now() / 1000);
     if (chain !== "ethereum") {
         return {
             name: "Lido",
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 1.0,
+            solvencyRatioBps: 10_000,
             utilizationBps: 0,
+            timestamp,
             details: { reason: "unsupported-chain" },
         };
     }
@@ -57,15 +59,16 @@ export async function fetchLidoMetrics(
         const actual = Number(totalPooledEther / 10n ** 18n);
         const rawUtilization = claimed > 0 ? Math.round(((claimed - actual) / claimed) * 10_000) : 0;
         const utilizationBps = Math.max(0, Math.min(10_000, rawUtilization));
-        const solvencyRatio = claimed > 0 ? actual / claimed : 1;
+        const solvencyRatioBps = claimed > 0 ? Math.round((actual / claimed) * 10_000) : 10_000;
 
         return {
             name: "Lido",
             chain,
             claimed,
             actual,
-            solvencyRatio,
+            solvencyRatioBps,
             utilizationBps,
+            timestamp,
             details: { adapter: "lido-steth", source: "mainnet" },
         };
     } catch (error) {
@@ -74,8 +77,9 @@ export async function fetchLidoMetrics(
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 0.9,
+            solvencyRatioBps: 9_000,
             utilizationBps: 9_500,
+            timestamp,
             details: { adapter: "lido-steth", error: (error as Error).message, degraded: true },
         };
     }

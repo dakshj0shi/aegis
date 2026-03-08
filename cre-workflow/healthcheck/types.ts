@@ -19,9 +19,10 @@ export interface ProtocolAdapterResult {
     chain: Chain;
     claimed: number;
     actual: number;
-    solvencyRatio: number;
+    solvencyRatioBps: number;
     utilizationBps: number;
-    details: Record<string, unknown>;
+    timestamp: number;
+    details?: Record<string, unknown>;
 }
 
 export interface VelocityAlert {

@@ -4,8 +4,17 @@
 import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
-const AAVE_POOL_ETHEREUM = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
-const WETH_ETHEREUM = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const AAVE_POOL_BY_CHAIN: Record<Chain, string> = {
+    ethereum: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+    arbitrum: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    base: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+};
+
+const WETH_BY_CHAIN: Record<Chain, string> = {
+    ethereum: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    arbitrum: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+    base: "0x4200000000000000000000000000000000000006",
+};
 
 const AAVE_ABI = [
     {
@@ -29,30 +38,21 @@ export async function fetchAaveMetrics(
     chain: Chain
 ): Promise<ProtocolAdapterResult> {
     const startTime = Date.now();
-
-    if (chain !== "ethereum") {
-        return {
-            name: "Aave V3",
-            chain,
-            claimed: 0,
-            actual: 0,
-            solvencyRatio: 1.0,
-            utilizationBps: 0,
-            details: { reason: "unsupported-chain" },
-        };
-    }
+    const timestamp = Math.floor(Date.now() / 1000);
 
     try {
+        const pool = AAVE_POOL_BY_CHAIN[chain];
+        const weth = WETH_BY_CHAIN[chain];
         const incomeRay = await client.callContract<bigint>({
-            contractAddress: AAVE_POOL_ETHEREUM,
+            contractAddress: pool,
             functionSignature: "getReserveNormalizedIncome(address)",
-            args: [WETH_ETHEREUM],
+            args: [weth],
             abi: AAVE_ABI,
         });
         const debtRay = await client.callContract<bigint>({
-            contractAddress: AAVE_POOL_ETHEREUM,
+            contractAddress: pool,
             functionSignature: "getReserveNormalizedVariableDebt(address)",
-            args: [WETH_ETHEREUM],
+            args: [weth],
             abi: AAVE_ABI,
         });
 
@@ -61,7 +61,7 @@ export async function fetchAaveMetrics(
         const claimed = Number(claimedRaw / 10n ** 18n);
         const actual = Number((claimedRaw - debtRaw) / 10n ** 18n);
         const utilizationBps = Number((debtRaw * 10_000n) / claimedRaw);
-        const solvencyRatio = claimed > 0 ? actual / claimed : 1;
+        const solvencyRatioBps = claimed > 0 ? Math.round((actual / claimed) * 10_000) : 10_000;
 
         console.log(`[ADAPTER:Aave] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms`);
 
@@ -70,12 +70,13 @@ export async function fetchAaveMetrics(
             chain,
             claimed,
             actual,
-            solvencyRatio,
+            solvencyRatioBps,
             utilizationBps,
+            timestamp,
             details: {
                 adapter: "aave-v3",
-                pool: AAVE_POOL_ETHEREUM,
-                source: "mainnet",
+                pool,
+                source: chain,
             },
         };
     } catch (error) {
@@ -85,8 +86,9 @@ export async function fetchAaveMetrics(
             chain,
             claimed: 0,
             actual: 0,
-            solvencyRatio: 0.5, // Return stressed state on adapter failure for safety
+            solvencyRatioBps: 5000, // Return stressed state on adapter failure for safety
             utilizationBps: 10_000,
+            timestamp,
             details: { adapter: "aave-v3", error: (error as Error).message, degraded: true },
         };
     }
@@ -98,7 +100,6 @@ export async function fetchAaveMetrics(
 export async function fetchAaveMultichain(
     clients: Map<Chain, EVMClient>
 ): Promise<ProtocolAdapterResult[]> {
-    const ethClient = clients.get("ethereum");
-    if (!ethClient) return [];
-    return [await fetchAaveMetrics(ethClient, "ethereum")];
+    const tasks = Array.from(clients.entries()).map(([chain, client]) => fetchAaveMetrics(client, chain));
+    return Promise.all(tasks);
 }

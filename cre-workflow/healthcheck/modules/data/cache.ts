@@ -32,7 +32,7 @@ export function setCachedProtocols(protocols: ProtocolAdapterResult[]): void {
     protocolCache = { protocols, updatedAt: Date.now() };
 }
 
-export function markDegraded(details: Record<string, unknown>, reason: string): Record<string, unknown> {
+export function markDegraded(details: Record<string, unknown> = {}, reason: string): Record<string, unknown> {
     return {
         ...details,
         dataQuality: "degraded",

@@ -100,36 +100,38 @@ export async function execute(runtime: WorkflowRuntime): Promise<HealthCheckRepo
         });
 
         // ── Step 2: Read Protocol State ───────────────────────────────────────
-        const adapterResults = await trackStep("Read Protocol State", async () => {
+        const protocolReports = await trackStep("Read Protocol State", async () => {
             console.log("[Step 2/10] Fetching protocol metrics across chains (Parallel)...");
-            const fetchers = [
-                { name: "Aave", fn: () => fetchAaveMultichain(clients) },
-                { name: "Compound", fn: () => fetchCompoundMultichain(clients) },
-                { name: "Uniswap", fn: () => fetchUniswapMultichain(clients) },
-                { name: "Maker", fn: () => fetchMakerMultichain(clients) },
-                { name: "Lido", fn: () => fetchLidoMultichain(clients) },
+            const safeFetch = async (name: string, fn: () => Promise<ProtocolAdapterResult[]>) => {
+                const start = Date.now();
+                try {
+                    const result = await withTimeout(fn(), 3500);
+                    adapterLatency[name] = Date.now() - start;
+                    console.log(`  [${name}] Fetched in ${adapterLatency[name]}ms`);
+                    return result;
+                } catch (e) {
+                    adapterLatency[name] = Date.now() - start;
+                    console.error(`  [${name}] FAILED:`, (e as Error).message);
+                    return [];
+                }
+            };
+
+            const [aaveReports, compoundReports, uniswapReports, makerReports, lidoReports] =
+                await Promise.all([
+                    safeFetch("Aave", () => fetchAaveMultichain(clients)),
+                    safeFetch("Compound", () => fetchCompoundMultichain(clients)),
+                    safeFetch("Uniswap", () => fetchUniswapMultichain(clients)),
+                    safeFetch("Maker", () => fetchMakerMultichain(clients)),
+                    safeFetch("Lido", () => fetchLidoMultichain(clients)),
+                ]);
+
+            const metrics: ProtocolAdapterResult[] = [
+                ...aaveReports,
+                ...compoundReports,
+                ...uniswapReports,
+                ...makerReports,
+                ...lidoReports,
             ];
-
-            const settled = await Promise.allSettled(
-                fetchers.map(async ({ name, fn }) => {
-                    const start = Date.now();
-                    try {
-                        const res = await withTimeout(fn(), 3500);
-                        adapterLatency[name] = Date.now() - start;
-                        console.log(`  [${name}] Fetched in ${adapterLatency[name]}ms`);
-                        return res;
-                    } catch (e) {
-                        console.error(`  [${name}] FAILED:`, (e as Error).message);
-                        adapterLatency[name] = Date.now() - start;
-                        return [];
-                    }
-                })
-            );
-
-            const metrics: ProtocolAdapterResult[] = [];
-            settled.forEach((res) => {
-                if (res.status === "fulfilled") metrics.push(...res.value);
-            });
 
             if (metrics.length === 0) {
                 const cached = getCachedProtocols();
@@ -151,12 +153,12 @@ export async function execute(runtime: WorkflowRuntime): Promise<HealthCheckRepo
             chain: result.chain,
             claimedReserves: result.claimed,
             actualReserves: result.actual,
-            solvencyRatio: result.solvencyRatio,
+            solvencyRatio: result.solvencyRatioBps / 10_000,
             utilization: result.utilizationBps / 10_000,
-            timestamp: Date.now(),
+            timestamp: result.timestamp * 1000,
         });
 
-        const allMetrics = adapterResults.map(toProtocolMetrics);
+        const allMetrics = protocolReports.map(toProtocolMetrics);
 
         // ── Step 3: Read Chainlink Price Feeds ────────────────────────────────
         const prices = await trackStep("Read Chainlink Feeds", async () => {
@@ -261,14 +263,14 @@ export async function execute(runtime: WorkflowRuntime): Promise<HealthCheckRepo
                 txHash = await ethClient.writeReport({
                     contractAddress: config.riskOracleAddress,
                     payload: reportPayload,
-                    protocolReports: adapterResults.map((m) => ({
+                    protocolReports: protocolReports.map((m) => ({
                         name: m.name,
                         chain: m.chain,
                         claimed: BigInt(Math.floor(m.claimed)),
                         actual: BigInt(Math.floor(m.actual)),
-                        solvencyRatioBps: BigInt(Math.floor(m.solvencyRatio * 10_000)),
+                        solvencyRatioBps: BigInt(Math.floor(m.solvencyRatioBps)),
                         utilizationBps: BigInt(Math.floor(m.utilizationBps)),
-                        timestamp: BigInt(Math.floor(Date.now() / 1000)),
+                        timestamp: BigInt(Math.floor(m.timestamp)),
                     })),
                 });
                 previousSubmittedSeverity = scoringResult.severity;

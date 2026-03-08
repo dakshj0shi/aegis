@@ -7,9 +7,6 @@ import { ChainConfig, Chain } from "../../types"
 
 dotenv.config()
 
-if (!process.env.MAINNET_RPC) {
-    throw new Error("MAINNET_RPC is required")
-}
 if (!process.env.SEPOLIA_RPC) {
     throw new Error("SEPOLIA_RPC is required")
 }
@@ -17,11 +14,6 @@ if (!process.env.PRIVATE_KEY) {
     throw new Error("PRIVATE_KEY is required")
 }
 
-const readProvider = new ethers.JsonRpcProvider(
-    process.env.MAINNET_RPC,
-    undefined,
-    { staticNetwork: true }
-)
 const writeProvider = new ethers.JsonRpcProvider(
     process.env.SEPOLIA_RPC,
     undefined,
@@ -36,9 +28,15 @@ const wallet = new ethers.Wallet(
 export class EVMClient {
     private config: ChainConfig
     private connected: boolean = false
+    private readProvider: ethers.JsonRpcProvider
 
     constructor(config: ChainConfig) {
         this.config = config
+        this.readProvider = new ethers.JsonRpcProvider(
+            this.config.rpcUrl,
+            undefined,
+            { staticNetwork: true }
+        )
     }
 
     get chainName(): Chain {
@@ -68,7 +66,7 @@ export class EVMClient {
         const contract = new ethers.Contract(
             params.contractAddress,
             params.abi,
-            readProvider
+            this.readProvider
         )
 
         const functionName = params.functionSignature.split("(")[0]
