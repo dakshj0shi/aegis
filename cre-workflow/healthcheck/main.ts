@@ -85,7 +85,7 @@ if (typeof process !== "undefined" && process.argv?.includes("--local")) {
             }
 
             console.log("\n⏳ Waiting 60 seconds for next cycle...\n");
-            await new Promise((r) => setTimeout(r, 60000));
+            await new Promise((r) => setTimeout(r, 3000000));
         }
     };
 
