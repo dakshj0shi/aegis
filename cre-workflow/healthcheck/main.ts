@@ -53,12 +53,12 @@ export async function main(creRuntime: {
 
     // Return report for DON consensus
     return {
-        reportId: report.reportId,
-        riskScore: report.finalRiskScore,
-        severity: report.severity,
-        timestamp: report.timestamp,
-        policyHash: report.policyHash,
-        checkNumber: report.checkNumber,
+        reportId: report.riskReport.reportId,
+        riskScore: report.riskReport.finalRiskScore,
+        severity: report.riskReport.severity,
+        timestamp: report.riskReport.timestamp,
+        policyHash: report.riskReport.policyHash,
+        checkNumber: report.riskReport.checkNumber,
     };
 }
 
