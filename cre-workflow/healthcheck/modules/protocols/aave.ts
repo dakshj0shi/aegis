@@ -4,25 +4,21 @@
 import { ProtocolAdapterResult, Chain } from "../../types";
 import { EVMClient } from "../evm/client";
 
-// Aave V3 Pool addresses per chain
-const AAVE_POOL_ADDRESSES: Partial<Record<Chain, string>> = {
-    ethereum: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
-    arbitrum: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-    base: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
-};
+const AAVE_POOL_ETHEREUM = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2";
+const WETH_ETHEREUM = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 
-// Aave V3 Data Provider ABI (simplified)
 const AAVE_ABI = [
     {
-        name: "getReserveData",
+        name: "getReserveNormalizedIncome",
         inputs: [{ name: "asset", type: "address" }],
-        outputs: [
-            { name: "totalAToken", type: "uint256" },
-            { name: "totalStableDebt", type: "uint256" },
-            { name: "totalVariableDebt", type: "uint256" },
-            { name: "liquidityRate", type: "uint256" },
-            { name: "variableBorrowRate", type: "uint256" },
-        ],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "view",
+        type: "function",
+    },
+    {
+        name: "getReserveNormalizedVariableDebt",
+        inputs: [{ name: "asset", type: "address" }],
+        outputs: [{ name: "", type: "uint256" }],
         stateMutability: "view",
         type: "function",
     },
@@ -32,10 +28,9 @@ export async function fetchAaveMetrics(
     client: EVMClient,
     chain: Chain
 ): Promise<ProtocolAdapterResult> {
-    const poolAddress = AAVE_POOL_ADDRESSES[chain];
     const startTime = Date.now();
 
-    if (!poolAddress) {
+    if (chain !== "ethereum") {
         return {
             name: "Aave V3",
             chain,
@@ -48,29 +43,40 @@ export async function fetchAaveMetrics(
     }
 
     try {
-        await client.callContract({
-            contractAddress: poolAddress,
-            functionSignature: "getReserveData(address)",
-            args: ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"], // WETH
+        const incomeRay = await client.callContract<bigint>({
+            contractAddress: AAVE_POOL_ETHEREUM,
+            functionSignature: "getReserveNormalizedIncome(address)",
+            args: [WETH_ETHEREUM],
+            abi: AAVE_ABI,
+        });
+        const debtRay = await client.callContract<bigint>({
+            contractAddress: AAVE_POOL_ETHEREUM,
+            functionSignature: "getReserveNormalizedVariableDebt(address)",
+            args: [WETH_ETHEREUM],
             abi: AAVE_ABI,
         });
 
-        // CRE Simulation: Real-world stress dynamics
-        const isStressed = Math.random() > 0.9;
-        const baseUtil = isStressed ? 0.88 : 0.45;
-        const util = baseUtil + (Math.random() * 0.1);
-        const tvl = 4_200_000_000 + (Math.random() * 500_000_000);
+        const claimedRaw = incomeRay > 0n ? incomeRay : 1n;
+        const debtRaw = debtRay > claimedRaw ? claimedRaw : debtRay;
+        const claimed = Number(claimedRaw / 10n ** 18n);
+        const actual = Number((claimedRaw - debtRaw) / 10n ** 18n);
+        const utilizationBps = Number((debtRaw * 10_000n) / claimedRaw);
+        const solvencyRatio = claimed > 0 ? actual / claimed : 1;
 
-        console.log(`[ADAPTER:Aave] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms Status: HIGH_AVAILABILITY`);
+        console.log(`[ADAPTER:Aave] ${chain.toUpperCase()} fetched. Latency: ${Date.now() - startTime}ms`);
 
         return {
             name: "Aave V3",
             chain,
-            claimed: tvl,
-            actual: tvl * (1 - util),
-            solvencyRatio: 1.0 - (util * 0.05), // Model solvency drop
-            utilizationBps: Math.round(util * 10_000),
-            details: { adapter: "aave-v3", stressed: isStressed },
+            claimed,
+            actual,
+            solvencyRatio,
+            utilizationBps,
+            details: {
+                adapter: "aave-v3",
+                pool: AAVE_POOL_ETHEREUM,
+                source: "mainnet",
+            },
         };
     } catch (error) {
         console.error(`[ADAPTER:Aave] CRITICAL FAILURE on ${chain}:`, (error as Error).message);
@@ -92,12 +98,7 @@ export async function fetchAaveMetrics(
 export async function fetchAaveMultichain(
     clients: Map<Chain, EVMClient>
 ): Promise<ProtocolAdapterResult[]> {
-    const results: ProtocolAdapterResult[] = [];
-
-    for (const [chain, client] of clients) {
-        const metrics = await fetchAaveMetrics(client, chain);
-        results.push(metrics);
-    }
-
-    return results;
+    const ethClient = clients.get("ethereum");
+    if (!ethClient) return [];
+    return [await fetchAaveMetrics(ethClient, "ethereum")];
 }

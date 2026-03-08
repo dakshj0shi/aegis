@@ -60,15 +60,16 @@ async function readFeed(
             }),
         ]);
 
-        if (roundData && typeof roundData === "object" && "answer" in roundData) {
-            const scale = Number(decimals ?? 8);
-            const price = Number(roundData.answer) / Math.pow(10, scale);
-            const updatedAt = Number(roundData.updatedAt ?? 0) * 1000;
-            setCachedPrice(cacheKey, price);
-            return { symbol, price, updatedAt, source: "live" };
+        const answer = extractField(roundData, "answer", 1);
+        const updatedAt = extractField(roundData, "updatedAt", 3);
+        const scale = Number(decimals ?? 8);
+        const price = Number(answer) / Math.pow(10, scale);
+        const normalizedUpdatedAt = Number(updatedAt) * 1000;
+        if (!Number.isFinite(price) || price <= 0) {
+            throw new Error("Invalid price value");
         }
-
-        throw new Error("Missing price feed data");
+        setCachedPrice(cacheKey, price);
+        return { symbol, price, updatedAt: normalizedUpdatedAt, source: "live" };
     } catch (error) {
         const cached = getCachedPrice(cacheKey);
         if (cached) {
@@ -76,6 +77,19 @@ async function readFeed(
         }
         return { symbol, price: symbol === "USDC/USD" ? 1 : 3000, updatedAt: Date.now(), source: "cache" };
     }
+}
+
+function extractField(source: unknown, key: string, index: number): bigint {
+    if (source && typeof source === "object") {
+        const withKey = source as Record<string, unknown>;
+        if (key in withKey && typeof withKey[key] === "bigint") {
+            return withKey[key] as bigint;
+        }
+        if (Array.isArray(source) && typeof source[index] === "bigint") {
+            return source[index] as bigint;
+        }
+    }
+    throw new Error(`Missing ${key} in feed response`);
 }
 
 export async function fetchPriceFeeds(

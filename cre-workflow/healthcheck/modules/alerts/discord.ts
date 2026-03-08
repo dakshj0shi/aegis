@@ -28,6 +28,10 @@ export async function sendDiscordAlert(
     webhookUrl: string,
     alert: DiscordAlert
 ): Promise<boolean> {
+    if (!webhookUrl || !webhookUrl.startsWith("http")) {
+        return false;
+    }
+
     const severity = getSeverityFromScore(alert.riskScore);
     const emoji = SEVERITY_EMOJI[severity];
     const color = SEVERITY_COLORS[severity];

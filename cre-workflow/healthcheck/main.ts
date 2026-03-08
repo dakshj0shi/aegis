@@ -75,19 +75,14 @@ if (typeof process !== "undefined" && process.argv?.includes("--local")) {
         getEnvironment: () => "local",
     };
 
-    const loop = async () => {
-        while (true) {
-            try {
-                const result = await main(mockRuntime);
-                console.log("\n📊 Workflow Result:", JSON.stringify(result, null, 2));
-            } catch (err) {
-                console.error("❌ Workflow failed:", err);
-            }
-
-            console.log("\n⏳ Waiting 60 seconds for next cycle...\n");
-            await new Promise((r) => setTimeout(r, 3000000));
+    (async () => {
+        try {
+            const result = await main(mockRuntime);
+            console.log("\n📊 Workflow Result:", JSON.stringify(result, null, 2));
+            process.exit(0);
+        } catch (err) {
+            console.error("❌ Workflow failed:", err);
+            process.exit(1);
         }
-    };
-
-    loop();
+    })();
 }

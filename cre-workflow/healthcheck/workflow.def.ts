@@ -51,6 +51,8 @@ export interface HealthCheckReport {
 
 // ─── Global State ───────────────────────────────────────────────────────────
 let checkNumber = 0;
+let previousSubmittedSeverity: Severity | null = null;
+let previousSubmittedRiskScore: number | null = null;
 
 // ─── Workflow Strategy ──────────────────────────────────────────────────────
 
@@ -238,6 +240,23 @@ export async function execute(runtime: WorkflowRuntime): Promise<HealthCheckRepo
                 console.warn("[AEGIS] No Ethereum client configured. Skipping on-chain write.");
                 return;
             }
+
+            const severityChanged =
+                previousSubmittedSeverity === null ||
+                previousSubmittedSeverity !== scoringResult.severity;
+            const scoreDelta =
+                previousSubmittedRiskScore === null
+                    ? Number.POSITIVE_INFINITY
+                    : Math.abs(scoringResult.finalScore - previousSubmittedRiskScore);
+            const shouldSubmit = severityChanged || scoreDelta > 5;
+
+            if (!shouldSubmit) {
+                console.log(
+                    `[AEGIS] Skipping on-chain submit (severity unchanged, score delta ${scoreDelta.toFixed(2)} <= 5)`
+                );
+                return;
+            }
+
             try {
                 txHash = await ethClient.writeReport({
                     contractAddress: config.riskOracleAddress,
@@ -252,6 +271,8 @@ export async function execute(runtime: WorkflowRuntime): Promise<HealthCheckRepo
                         timestamp: BigInt(Math.floor(Date.now() / 1000)),
                     })),
                 });
+                previousSubmittedSeverity = scoringResult.severity;
+                previousSubmittedRiskScore = scoringResult.finalScore;
                 console.log(`  Oracle Update Submitted: ${txHash}`);
             } catch (error) {
                 console.error("[AEGIS] On-chain submit failed. Continuing workflow.", error);

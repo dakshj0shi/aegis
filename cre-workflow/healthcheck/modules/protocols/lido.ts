@@ -14,6 +14,13 @@ const STETH_ABI = [
         stateMutability: "view",
         type: "function",
     },
+    {
+        name: "getTotalPooledEther",
+        inputs: [],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "view",
+        type: "function",
+    },
 ];
 
 export async function fetchLidoMetrics(
@@ -33,25 +40,33 @@ export async function fetchLidoMetrics(
     }
 
     try {
-        await client.callContract({
+        const totalSupply = await client.callContract<bigint>({
             contractAddress: LIDO_STETH_ADDRESS,
             functionSignature: "totalSupply()",
             args: [],
             abi: STETH_ABI,
         });
+        const totalPooledEther = await client.callContract<bigint>({
+            contractAddress: LIDO_STETH_ADDRESS,
+            functionSignature: "getTotalPooledEther()",
+            args: [],
+            abi: STETH_ABI,
+        });
 
-        const totalStaked = 9_500_000_000 + (Math.random() * 400_000_000);
-        const activeReserve = totalStaked * 0.985;
-        const utilization = 0.18 + (Math.random() * 0.05);
+        const claimed = Number(totalSupply / 10n ** 18n);
+        const actual = Number(totalPooledEther / 10n ** 18n);
+        const rawUtilization = claimed > 0 ? Math.round(((claimed - actual) / claimed) * 10_000) : 0;
+        const utilizationBps = Math.max(0, Math.min(10_000, rawUtilization));
+        const solvencyRatio = claimed > 0 ? actual / claimed : 1;
 
         return {
             name: "Lido",
             chain,
-            claimed: totalStaked,
-            actual: activeReserve,
-            solvencyRatio: activeReserve / totalStaked,
-            utilizationBps: Math.round(utilization * 10_000),
-            details: { adapter: "lido-steth" },
+            claimed,
+            actual,
+            solvencyRatio,
+            utilizationBps,
+            details: { adapter: "lido-steth", source: "mainnet" },
         };
     } catch (error) {
         return {

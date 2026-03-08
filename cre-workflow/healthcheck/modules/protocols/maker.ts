@@ -52,34 +52,33 @@ export async function fetchMakerMetrics(
     console.log(`[Maker:${chain}] Fetching Vat data from ${MAKER_ADDRESSES.vat}`);
 
     try {
-        // Read total debt ceiling (Line) and current debt
-        await client.callContract({
+        const debtCeilingRaw = await client.callContract<bigint>({
             contractAddress: MAKER_ADDRESSES.vat,
             functionSignature: "Line()",
             args: [],
             abi: MAKER_ABI,
         });
-
-        await client.callContract({
+        const currentDebtRaw = await client.callContract<bigint>({
             contractAddress: MAKER_ADDRESSES.vat,
             functionSignature: "debt()",
             args: [],
             abi: MAKER_ABI,
         });
 
-        // Demo: simulate realistic Maker metrics
-        const debtCeiling = 8_000_000_000; // $8B ceiling
-        const currentDebt = 5_200_000_000; // $5.2B DAI outstanding
-        const collateral = 10_400_000_000; // $10.4B collateral (200% ratio)
+        // Vat values are in RAD (10^45). Convert to DAI scale.
+        const debtCeiling = Number(debtCeilingRaw / 10n ** 45n);
+        const currentDebt = Number(currentDebtRaw / 10n ** 45n);
+        const collateral = debtCeiling;
+        const safeDebt = Math.min(currentDebt, collateral);
 
         return {
             name: "MakerDAO",
             chain,
             claimed: collateral,
-            actual: collateral - currentDebt,
-            solvencyRatio: (collateral - currentDebt) / collateral,
-            utilizationBps: Math.round((currentDebt / debtCeiling) * 10_000),
-            details: { adapter: "maker" },
+            actual: collateral - safeDebt,
+            solvencyRatio: collateral > 0 ? (collateral - safeDebt) / collateral : 1,
+            utilizationBps: debtCeiling > 0 ? Math.round((safeDebt / debtCeiling) * 10_000) : 0,
+            details: { adapter: "maker", vat: MAKER_ADDRESSES.vat, source: "mainnet" },
         };
     } catch (error) {
         console.error(`[Maker:${chain}] Error:`, error);
